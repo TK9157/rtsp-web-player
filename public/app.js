@@ -36,11 +36,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY = 'sentinel_rtsp_history_v1';
 
   // ---------------------------------------------------------
-  // 1. Live UTC Clock Initialization
+  // 1. Live Indian Standard Time (IST) Clock Initialization
   // ---------------------------------------------------------
   const updateClock = () => {
     const now = new Date();
-    liveClock.textContent = now.toISOString().substring(11, 19) + ' UTC';
+    const timeString = now.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+    if (liveClock) {
+      liveClock.textContent = `${timeString} IST`;
+    }
   };
   setInterval(updateClock, 1000);
   updateClock();
@@ -100,13 +109,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------------------------------------------------------
-  // 3. Diagnostics Logger Utility
+  // 3. Diagnostics Logger Utility (Localized to IST)
   // ---------------------------------------------------------
   const logDiag = (message, colorClass = 'text-zinc-300') => {
-    const timestamp = new Date().toISOString().substring(11, 19);
+    const timestamp = new Date().toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
     const line = document.createElement('div');
     line.className = `log-line ${colorClass}`;
-    line.textContent = `[${timestamp}] ${message}`;
+    line.textContent = `[\({timestamp}]\){message}`;
     diagLogs.appendChild(line);
     diagLogs.scrollTop = diagLogs.scrollHeight;
   };
@@ -190,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Build backend WebSocket query URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    activeWsUrl = `${protocol}//${window.location.host}/api/stream?url=${encodeURIComponent(formattedTarget)}`;
+    activeWsUrl = `\({protocol}//\){window.location.host}/api/stream?url=${encodeURIComponent(formattedTarget)}`;
 
     setConnectionState('RESOLVING');
     logDiag(`[WS] Connecting relay to ${activeWsUrl}`);
@@ -311,63 +326,4 @@ document.addEventListener('DOMContentLoaded', () => {
     historyList.innerHTML = '';
 
     if (history.length === 0) {
-      historyList.innerHTML = '<div class="history-empty">No recent endpoints saved.</div>';
-      return;
-    }
-
-    history.forEach((url) => {
-      const item = document.createElement('div');
-      item.className = 'history-item';
-      item.title = url;
-      item.innerHTML = `
-        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;">${url}</span>
-        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-      `;
-      item.addEventListener('click', () => {
-        rtspInput.value = url;
-        startStream(url);
-      });
-      historyList.appendChild(item);
-    });
-  };
-
-  btnClearHistory.addEventListener('click', () => {
-    localStorage.removeItem(STORAGE_KEY);
-    renderHistory();
-    logDiag(`[HISTORY] Cleared endpoint history.`, 'text-zinc-500');
-  });
-
-  // ---------------------------------------------------------
-  // 8. Event Listeners & Controls
-  // ---------------------------------------------------------
-  btnConnect.addEventListener('click', () => startStream(rtspInput.value));
-  btnStop.addEventListener('click', stopStream);
-  btnReconnect.addEventListener('click', () => {
-    if (currentRtspTarget) startStream(currentRtspTarget);
-  });
-
-  rtspInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      startStream(rtspInput.value);
-    }
-  });
-
-  // Fullscreen Handler
-  btnFullscreen.addEventListener('click', () => {
-    if (!document.fullscreenElement) {
-      if (videoWrapper.requestFullscreen) {
-        videoWrapper.requestFullscreen();
-      } else if (videoWrapper.webkitRequestFullscreen) {
-        videoWrapper.webkitRequestFullscreen();
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
-    }
-  });
-
-  // Initial setup
-  renderHistory();
-  setConnectionState('IDLE');
-});
+      historyList.innerHTML = '
