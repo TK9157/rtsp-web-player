@@ -16,15 +16,11 @@ COPY package*.json ./
 
 # Install production dependencies only
 RUN npm install --omit=dev
+
 # Copy application source code
 COPY . .
 
-# Expose port
-EXPOSE 3000
+ENV PORT=10000
+EXPOSE 10000
 
-# Set environment variable for production
-ENV NODE_ENV=production
-ENV PORT=3000
-
-# Run server
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
