@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusText = document.getElementById('status-text');
   const statusBadge = document.getElementById('system-badge');
   const statusDot = statusBadge.querySelector('.status-indicator-dot');
+  const liveClock = document.getElementById('live-clock');
   const hudEndpoint = document.getElementById('hud-endpoint-display');
   const hudBitrate = document.getElementById('hud-bitrate-display');
 
@@ -35,34 +36,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY = 'sentinel_rtsp_history_v1';
 
   // ---------------------------------------------------------
-  // 1. Endpoint Normalization
+  // 1. Live UTC Clock Initialization
+  // ---------------------------------------------------------
+  const updateClock = () => {
+    const now = new Date();
+    liveClock.textContent = now.toISOString().substring(11, 19) + ' UTC';
+  };
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ---------------------------------------------------------
+  // 2. Intelligent Endpoint Normalization & Sanitization
   // ---------------------------------------------------------
   const formatRtspUrl = (rawInput) => {
     let clean = rawInput.trim();
     if (!clean) return '';
 
+    // Strip leading rtsp:// or rtsps:// if present to parse domain/IP cleanly
     let hasRtspPrefix = /^rtsps?:\/\//i.test(clean);
     let targetCore = clean.replace(/^rtsps?:\/\//i, '');
 
+    // Check if input is pure IP or Hostname without credentials/ports/paths
+    // e.g. "103.25.10.45" or "camera.dyndns.org"
     const pureHostRegex = /^([a-zA-Z0-9.-]+)$/;
     if (pureHostRegex.test(targetCore)) {
       return `rtsp://${targetCore}:554`;
     }
 
+    // Check if input is host:port without path e.g. "103.25.10.45:554"
     const hostPortRegex = /^([a-zA-Z0-9.-]+):(\d+)$/;
     if (hostPortRegex.test(targetCore)) {
       return `rtsp://${targetCore}`;
     }
 
+    // Return with mandatory rtsp:// prefix preserved or added
     return hasRtspPrefix ? clean : `rtsp://${clean}`;
   };
 
+  // Real-time input formatter on blur or typing
   rtspInput.addEventListener('blur', () => {
     if (rtspInput.value) {
       rtspInput.value = formatRtspUrl(rtspInput.value);
     }
   });
 
+  // Preset chip handler
   presetChips.forEach(chip => {
     chip.addEventListener('click', () => {
       const subpath = chip.getAttribute('data-path');
@@ -71,7 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
         val = '103.25.10.45:554';
       }
       val = formatRtspUrl(val);
+      // Append path if not already present
       if (!val.includes(subpath)) {
+        // Strip trailing slashes
         val = val.replace(/\/+$/, '') + subpath;
       }
       rtspInput.value = val;
@@ -80,22 +100,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------------------------------------------------------
-  // 2. Diagnostics Logger Utility (Lightweight time string)
+  // 3. Diagnostics Logger Utility
   // ---------------------------------------------------------
   const logDiag = (message, colorClass = 'text-zinc-300') => {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const timeStr = `\({pad(d.getHours())}:\){pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    
+    const timestamp = new Date().toISOString().substring(11, 19);
     const line = document.createElement('div');
     line.className = `log-line ${colorClass}`;
-    line.textContent = `[\({timeStr}]\){message}`;
+    line.textContent = `[${timestamp}] ${message}`;
     diagLogs.appendChild(line);
     diagLogs.scrollTop = diagLogs.scrollHeight;
   };
 
   // ---------------------------------------------------------
-  // 3. Connection State Machine
+  // 4. Connection State Machine
   // ---------------------------------------------------------
   const setConnectionState = (state, details = '') => {
     statusDot.className = 'status-indicator-dot';
@@ -156,10 +173,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 4. JSMpeg Player Lifecycle Controller
+  // 5. JSMpeg Player Lifecycle Controller
   // ---------------------------------------------------------
   const startStream = (rtspUrl) => {
-    stopStream();
+    stopStream(); // Ensure previous process & socket are destroyed
 
     const formattedTarget = formatRtspUrl(rtspUrl);
     if (!formattedTarget) {
@@ -171,8 +188,9 @@ document.addEventListener('DOMContentLoaded', () => {
     rtspInput.value = formattedTarget;
     saveToHistory(formattedTarget);
 
+    // Build backend WebSocket query URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    activeWsUrl = `\({protocol}//\){window.location.host}/api/stream?url=${encodeURIComponent(formattedTarget)}`;
+    activeWsUrl = `${protocol}//${window.location.host}/api/stream?url=${encodeURIComponent(formattedTarget)}`;
 
     setConnectionState('RESOLVING');
     logDiag(`[WS] Connecting relay to ${activeWsUrl}`);
@@ -181,11 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
     startBitrateMonitor();
 
     try {
+      // Instantiate JSMpeg player over WebSocket
       jsmpegPlayer = new JSMpeg.Player(activeWsUrl, {
         canvas: canvas,
         autoplay: true,
-        audio: true,
-        audioBufferSize: 512 * 1024,
+        audio: false,
         loop: false,
         onVideoDecode: () => {
           if (statusText.textContent !== 'STREAMING LIVE (TCP)') {
@@ -198,6 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
+      // Hook underlying source websocket for error tracking
       if (jsmpegPlayer && jsmpegPlayer.source && jsmpegPlayer.source.socket) {
         const socket = jsmpegPlayer.source.socket;
         
@@ -212,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setConnectionState('ERROR', 'Host unreachable or socket failed');
         });
 
-        socket.addEventListener('close', () => {
+        socket.addEventListener('close', (e) => {
           if (statusText.textContent === 'STREAMING LIVE (TCP)') {
             setConnectionState('LOST');
           }
@@ -240,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 5. Bitrate Monitoring Calculation
+  // 6. Bitrate Monitoring Calculation
   // ---------------------------------------------------------
   const startBitrateMonitor = () => {
     stopBitrateMonitor();
@@ -259,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 6. LocalStorage History Management
+  // 7. LocalStorage History Management (Last 10 Items)
   // ---------------------------------------------------------
   const loadHistory = () => {
     try {
@@ -272,8 +291,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const saveToHistory = (url) => {
     let history = loadHistory();
+    // Filter duplicates
     history = history.filter(item => item !== url);
+    // Prepend latest item
     history.unshift(url);
+    // Limit to max 10 items
     if (history.length > 10) history = history.slice(0, 10);
 
     try {
@@ -289,4 +311,63 @@ document.addEventListener('DOMContentLoaded', () => {
     historyList.innerHTML = '';
 
     if (history.length === 0) {
-      historyList.innerHTML = '
+      historyList.innerHTML = '<div class="history-empty">No recent endpoints saved.</div>';
+      return;
+    }
+
+    history.forEach((url) => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      item.title = url;
+      item.innerHTML = `
+        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px;">${url}</span>
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+      `;
+      item.addEventListener('click', () => {
+        rtspInput.value = url;
+        startStream(url);
+      });
+      historyList.appendChild(item);
+    });
+  };
+
+  btnClearHistory.addEventListener('click', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    renderHistory();
+    logDiag(`[HISTORY] Cleared endpoint history.`, 'text-zinc-500');
+  });
+
+  // ---------------------------------------------------------
+  // 8. Event Listeners & Controls
+  // ---------------------------------------------------------
+  btnConnect.addEventListener('click', () => startStream(rtspInput.value));
+  btnStop.addEventListener('click', stopStream);
+  btnReconnect.addEventListener('click', () => {
+    if (currentRtspTarget) startStream(currentRtspTarget);
+  });
+
+  rtspInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      startStream(rtspInput.value);
+    }
+  });
+
+  // Fullscreen Handler
+  btnFullscreen.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      if (videoWrapper.requestFullscreen) {
+        videoWrapper.requestFullscreen();
+      } else if (videoWrapper.webkitRequestFullscreen) {
+        videoWrapper.webkitRequestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  });
+
+  // Initial setup
+  renderHistory();
+  setConnectionState('IDLE');
+});
