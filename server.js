@@ -32,27 +32,28 @@ wss.on('connection', (ws, req) => {
 
   let ffmpegProcess = null;
 
-  // Header payload for JSMpeg stream format (MPEG1-video, 4-byte magic code "jsmp")
-  // JSMpeg expects a 8-byte header: 4 bytes 'jsmp' + 2 bytes width + 2 bytes height
-  // FFmpeg mpeg1video output with stream parameters works seamlessly when relayed over WS.
-
-  // Build FFmpeg arguments optimized for remote WAN streaming & low latency
+  // Build FFmpeg arguments optimized for remote WAN streaming & low latency with Audio
   const ffmpegArgs = [
     '-loglevel', 'error',
-    // Remote WAN Hardening: Force TCP transport to avoid UDP drop/tearing over internet
+    // Remote WAN Hardening: Force TCP transport
     '-rtsp_transport', 'tcp',
-    // Set socket timeout in microseconds (5,000,000 µs = 5 seconds) to avoid hanging server thread
+    // 5-second socket timeout in microseconds
     '-timeout', '5000000',
     '-i', rtspUrl,
-    // Video conversion parameters for JSMpeg (MPEG-1 Video)
+    // Container format for JSMpeg
     '-f', 'mpegts',
+    // Video transcoding
     '-codec:v', 'mpeg1video',
     '-b:v', '1200k',
     '-maxrate', '1500k',
     '-bufsize', '3000k',
     '-r', '25',
     '-s', '1280x720',
-    '-an', // Disable audio to optimize bandwidth and performance
+    // Audio transcoding for JSMpeg WebAudio decoder
+    '-codec:a', 'mp2',
+    '-ar', '44100',
+    '-ac', '1',
+    '-b:a', '128k',
     '-'
   ];
 
@@ -79,13 +80,13 @@ wss.on('connection', (ws, req) => {
   });
 
   ffmpegProcess.on('close', (code, signal) => {
-    console.log(`[FFmpeg] Process exited with code ${code}, signal ${signal}`);
+    console.log(`[FFmpeg] Process exited with code \({code}, signal\){signal}`);
     if (ws.readyState === WebSocket.OPEN) {
       ws.close(1000, 'FFmpeg stream terminated');
     }
   });
 
-  // Strict teardown listener: Kill FFmpeg child process immediately on client disconnect
+  // Teardown listener: Kill FFmpeg immediately on client disconnect
   const cleanup = () => {
     if (ffmpegProcess) {
       console.log(`[WS] Terminating FFmpeg child process PID ${ffmpegProcess.pid}`);
@@ -99,7 +100,7 @@ wss.on('connection', (ws, req) => {
   };
 
   ws.on('close', (code, reason) => {
-    console.log(`[WS] Client disconnected (${code} - ${reason})`);
+    console.log(`[WS] Client disconnected (\({code} -\){reason})`);
     cleanup();
   });
 
@@ -109,7 +110,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Health check endpoint for container / systemd monitoring
+// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date() });
 });
