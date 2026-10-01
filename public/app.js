@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusText = document.getElementById('status-text');
   const statusBadge = document.getElementById('system-badge');
   const statusDot = statusBadge.querySelector('.status-indicator-dot');
-  const liveClock = document.getElementById('live-clock');
   const hudEndpoint = document.getElementById('hud-endpoint-display');
   const hudBitrate = document.getElementById('hud-bitrate-display');
 
@@ -36,26 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const STORAGE_KEY = 'sentinel_rtsp_history_v1';
 
   // ---------------------------------------------------------
-  // 1. Live Indian Standard Time (IST) Clock Initialization
-  // ---------------------------------------------------------
-  const updateClock = () => {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-    if (liveClock) {
-      liveClock.textContent = `${timeString} IST`;
-    }
-  };
-  setInterval(updateClock, 1000);
-  updateClock();
-
-  // ---------------------------------------------------------
-  // 2. Intelligent Endpoint Normalization & Sanitization
+  // 1. Endpoint Normalization
   // ---------------------------------------------------------
   const formatRtspUrl = (rawInput) => {
     let clean = rawInput.trim();
@@ -100,25 +80,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------------------------------------------------------
-  // 3. Diagnostics Logger Utility (Localized to IST)
+  // 2. Diagnostics Logger Utility (Lightweight time string)
   // ---------------------------------------------------------
   const logDiag = (message, colorClass = 'text-zinc-300') => {
-    const timestamp = new Date().toLocaleTimeString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const timeStr = `\({pad(d.getHours())}:\){pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    
     const line = document.createElement('div');
     line.className = `log-line ${colorClass}`;
-    line.textContent = `[\({timestamp}]\){message}`;
+    line.textContent = `[\({timeStr}]\){message}`;
     diagLogs.appendChild(line);
     diagLogs.scrollTop = diagLogs.scrollHeight;
   };
 
   // ---------------------------------------------------------
-  // 4. Connection State Machine
+  // 3. Connection State Machine
   // ---------------------------------------------------------
   const setConnectionState = (state, details = '') => {
     statusDot.className = 'status-indicator-dot';
@@ -179,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 5. JSMpeg Player Lifecycle Controller (With Audio Enabled)
+  // 4. JSMpeg Player Lifecycle Controller
   // ---------------------------------------------------------
   const startStream = (rtspUrl) => {
     stopStream();
@@ -204,7 +181,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startBitrateMonitor();
 
     try {
-      // Audio is set to true; audioBufferSize set to reduce crackle
       jsmpegPlayer = new JSMpeg.Player(activeWsUrl, {
         canvas: canvas,
         autoplay: true,
@@ -264,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 6. Bitrate Monitoring Calculation
+  // 5. Bitrate Monitoring Calculation
   // ---------------------------------------------------------
   const startBitrateMonitor = () => {
     stopBitrateMonitor();
@@ -283,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 7. LocalStorage History Management (Last 10 Items)
+  // 6. LocalStorage History Management
   // ---------------------------------------------------------
   const loadHistory = () => {
     try {
