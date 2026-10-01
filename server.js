@@ -42,7 +42,7 @@ wss.on('connection', (ws, req) => {
     // Remote WAN Hardening: Force TCP transport to avoid UDP drop/tearing over internet
     '-rtsp_transport', 'tcp',
     // Set socket timeout in microseconds (5,000,000 µs = 5 seconds) to avoid hanging server thread
-    '-stimeout', '5000000',
+    '-timeout', '5000000',
     '-i', rtspUrl,
     // Video conversion parameters for JSMpeg (MPEG-1 Video)
     '-f', 'mpegts',
