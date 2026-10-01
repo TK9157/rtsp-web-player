@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SENTINEL-X // RTSP WAN Video Streamer</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- JSMpeg Standalone Library for Canvas Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/jsmpeg-player@5.1.0/build/jsmpeg.min.js"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen flex flex-col">
+  
+  <!-- Header Navbar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <span class="pulse-dot"></span>
+      </div>
+      <div>
+        <h1 class="brand-title">SENTINEL-X <span class="brand-sub">RTSP WAN STREAMER</span></h1>
+        <p class="brand-subtitle">PRODUCTION HARDENED 24/7 CCTV MONITORING PIPELINE</p>
+      </div>
+    </div>
+
+    <div class="system-status flex items-center gap-4">
+      <div class="status-badge" id="system-badge">
+        <span class="status-indicator-dot idle"></span>
+        <span id="status-text">SYSTEM IDLE</span>
+      </div>
+      <div class="clock-display" id="live-clock">00:00:00 UTC</div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    
+    <!-- Control Bar & Endpoint Inputs -->
+    <section class="control-panel">
+      <div class="input-card">
+        <label for="rtsp-input" class="input-label">
+          <span>TARGET IP / RTSP ENDPOINT</span>
+          <span class="label-hint">Paste raw IP address, host, or full RTSP URL</span>
+        </label>
+        <div class="input-wrapper">
+          <div class="input-prefix">RTSP://</div>
+          <input 
+            type="text" 
+            id="rtsp-input" 
+            class="endpoint-input" 
+            placeholder="103.25.10.45 or admin:pass@camera.dyndns.org:554/Streaming/Channels/101"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="btn-connect" class="btn btn-primary">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            CONNECT
+          </button>
+          <button id="btn-stop" class="btn btn-danger" disabled>
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+            STOP
+          </button>
+          <button id="btn-reconnect" class="btn btn-secondary" disabled>
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            RECONNECT
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Preset Suggestions -->
+      <div class="preset-bar">
+        <span class="preset-title">COMMON CAM PATHS:</span>
+        <button class="preset-chip" data-path="/Streaming/Channels/101">Hikvision Main</button>
+        <button class="preset-chip" data-path="/cam/realmonitor?channel=1&subtype=0">Dahua Main</button>
+        <button class="preset-chip" data-path="/h264Preview_01_main">Reolink Main</button>
+        <button class="preset-chip" data-path="/live/ch0">Axis / Generic</button>
+        <button class="preset-chip" data-path="/onvif1">ONVIF Stream</button>
+      </div>
+    </section>
+
+    <!-- Video Stage & Tactical Diagnostics HUD -->
+    <section class="stage-container">
+      
+      <!-- Video Monitor Canvas Wrapper (16:9 Aspect Ratio) -->
+      <div class="video-card" id="video-wrapper">
+        <div class="video-overlay-hud">
+          <div class="hud-left">
+            <span class="hud-tag">LIVE FEED</span>
+            <span class="hud-endpoint" id="hud-endpoint-display">NO SOURCE CONNECTED</span>
+          </div>
+          <div class="hud-right">
+            <span class="hud-metrics" id="hud-bitrate-display">0 KB/S</span>
+            <span class="hud-protocol">TCP/MPEG1</span>
+          </div>
+        </div>
+
+        <!-- HTML5 Canvas Element for JSMpeg -->
+        <canvas id="video-canvas" width="1280" height="720"></canvas>
+
+        <!-- Placeholder Standby Screen -->
+        <div class="canvas-placeholder" id="canvas-placeholder">
+          <div class="placeholder-icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          </div>
+          <p class="placeholder-title">NO ACTIVE STREAM</p>
+          <p class="placeholder-subtitle">Enter camera IP or RTSP endpoint above to initiate WAN WebSocket feed</p>
+        </div>
+
+        <!-- Fullscreen Overlay Controls -->
+        <div class="video-controls-overlay">
+          <button id="btn-fullscreen" class="btn-icon" title="Toggle Fullscreen">
+            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- History & Connection Diagnostics Panel -->
+      <aside class="sidebar-panel">
+        <div class="panel-header">
+          <h3>RECENT ENDPOINTS</h3>
+          <button id="btn-clear-history" class="btn-text">CLEAR</button>
+        </div>
+        <div class="history-list" id="history-list">
+          <div class="history-empty">No recent endpoints saved.</div>
+        </div>
+
+        <div class="panel-header mt-6">
+          <h3>SYSTEM DIAGNOSTICS</h3>
+        </div>
+        <div class="diagnostics-box font-mono" id="diag-logs">
+          <div class="log-line text-zinc-500">[SYSTEM] Ready. Enter RTSP target to connect.</div>
+        </div>
+      </aside>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>SENTINEL-X HIGH-AVAILABILITY RTSP WAN STREAMER v1.0.0</span>
+    <span>STRICT TCP TRANSPORT // HIGH-LATENCY DROPPED PACKET RECOVERY</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

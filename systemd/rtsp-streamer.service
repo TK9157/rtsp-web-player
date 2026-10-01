@@ -1,0 +1,26 @@
+[Unit]
+Description=SENTINEL-X RTSP WAN Video Streamer Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/rtsp-streamer
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5s
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Security Hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtsp-streamer
+
+[Install]
+WantedBy=multi-user.target
