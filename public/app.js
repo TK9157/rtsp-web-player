@@ -61,35 +61,28 @@ document.addEventListener('DOMContentLoaded', () => {
     let clean = rawInput.trim();
     if (!clean) return '';
 
-    // Strip leading rtsp:// or rtsps:// if present to parse domain/IP cleanly
     let hasRtspPrefix = /^rtsps?:\/\//i.test(clean);
     let targetCore = clean.replace(/^rtsps?:\/\//i, '');
 
-    // Check if input is pure IP or Hostname without credentials/ports/paths
-    // e.g. "103.25.10.45" or "camera.dyndns.org"
     const pureHostRegex = /^([a-zA-Z0-9.-]+)$/;
     if (pureHostRegex.test(targetCore)) {
       return `rtsp://${targetCore}:554`;
     }
 
-    // Check if input is host:port without path e.g. "103.25.10.45:554"
     const hostPortRegex = /^([a-zA-Z0-9.-]+):(\d+)$/;
     if (hostPortRegex.test(targetCore)) {
       return `rtsp://${targetCore}`;
     }
 
-    // Return with mandatory rtsp:// prefix preserved or added
     return hasRtspPrefix ? clean : `rtsp://${clean}`;
   };
 
-  // Real-time input formatter on blur or typing
   rtspInput.addEventListener('blur', () => {
     if (rtspInput.value) {
       rtspInput.value = formatRtspUrl(rtspInput.value);
     }
   });
 
-  // Preset chip handler
   presetChips.forEach(chip => {
     chip.addEventListener('click', () => {
       const subpath = chip.getAttribute('data-path');
@@ -98,9 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
         val = '103.25.10.45:554';
       }
       val = formatRtspUrl(val);
-      // Append path if not already present
       if (!val.includes(subpath)) {
-        // Strip trailing slashes
         val = val.replace(/\/+$/, '') + subpath;
       }
       rtspInput.value = val;
@@ -188,10 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ---------------------------------------------------------
-  // 5. JSMpeg Player Lifecycle Controller
+  // 5. JSMpeg Player Lifecycle Controller (With Audio Enabled)
   // ---------------------------------------------------------
   const startStream = (rtspUrl) => {
-    stopStream(); // Ensure previous process & socket are destroyed
+    stopStream();
 
     const formattedTarget = formatRtspUrl(rtspUrl);
     if (!formattedTarget) {
@@ -203,7 +194,6 @@ document.addEventListener('DOMContentLoaded', () => {
     rtspInput.value = formattedTarget;
     saveToHistory(formattedTarget);
 
-    // Build backend WebSocket query URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     activeWsUrl = `\({protocol}//\){window.location.host}/api/stream?url=${encodeURIComponent(formattedTarget)}`;
 
@@ -214,11 +204,12 @@ document.addEventListener('DOMContentLoaded', () => {
     startBitrateMonitor();
 
     try {
-      // Instantiate JSMpeg player over WebSocket
+      // Audio is set to true; audioBufferSize set to reduce crackle
       jsmpegPlayer = new JSMpeg.Player(activeWsUrl, {
         canvas: canvas,
         autoplay: true,
-        audio: false,
+        audio: true,
+        audioBufferSize: 512 * 1024,
         loop: false,
         onVideoDecode: () => {
           if (statusText.textContent !== 'STREAMING LIVE (TCP)') {
@@ -231,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // Hook underlying source websocket for error tracking
       if (jsmpegPlayer && jsmpegPlayer.source && jsmpegPlayer.source.socket) {
         const socket = jsmpegPlayer.source.socket;
         
@@ -246,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setConnectionState('ERROR', 'Host unreachable or socket failed');
         });
 
-        socket.addEventListener('close', (e) => {
+        socket.addEventListener('close', () => {
           if (statusText.textContent === 'STREAMING LIVE (TCP)') {
             setConnectionState('LOST');
           }
@@ -306,11 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const saveToHistory = (url) => {
     let history = loadHistory();
-    // Filter duplicates
     history = history.filter(item => item !== url);
-    // Prepend latest item
     history.unshift(url);
-    // Limit to max 10 items
     if (history.length > 10) history = history.slice(0, 10);
 
     try {
